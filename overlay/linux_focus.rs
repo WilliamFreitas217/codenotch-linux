@@ -16,7 +16,6 @@
 //! Everything that decides something (which window wins, which backend to use, how a line is
 //! parsed) is a pure function with tests; only `run` touches the system.
 
-use std::collections::HashMap;
 use std::process::Command;
 
 use serde_json::Value;
@@ -301,22 +300,14 @@ pub fn focus_terminal(claude_pid: u32) -> bool {
     ok
 }
 
-/// Kept for the startup log and `doctor`.
-#[allow(dead_code)]
-pub fn session_summary() -> String {
-    describe(&Env::from_process())
-}
-
-/// Used by nothing at run time; documents the intended shape of a `ProcMaps`-like lookup for
-/// callers that already hold a pid -> parent map and want the same chain logic.
-#[allow(dead_code)]
-pub fn ancestor_chain_from_map(pid: u32, map: &HashMap<u32, u32>) -> Vec<u32> {
-    ancestor_chain_with(pid, |p| map.get(&p).copied())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
+
+    fn ancestor_chain_from_map(pid: u32, map: &HashMap<u32, u32>) -> Vec<u32> {
+        ancestor_chain_with(pid, |p| map.get(&p).copied())
+    }
 
     #[test]
     fn ppid_survives_awkward_command_names() {

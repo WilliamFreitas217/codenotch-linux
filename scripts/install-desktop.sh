@@ -1,6 +1,6 @@
 #!/bin/sh
-# Put Codenotch in the application menu (and, with --autostart, start it at login).
-# Both entries go through run-linux.sh so they keep the X11/XWayland settings.
+# Put Codenotch in the application menu. The entry goes through run-linux.sh so it keeps the
+# X11/XWayland settings. Start at login is the app's own toggle (setup.sh patches it for X11).
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 icon="$root/codenotch/icons/128x128.png"
@@ -20,16 +20,3 @@ Categories=Development;Utility;
 EOF
 echo "menu entry:  $apps/codenotch.desktop"
 
-if [ "${1:-}" = "--autostart" ]; then
-  auto=${XDG_CONFIG_HOME:-$HOME/.config}/autostart
-  mkdir -p "$auto"
-  cat > "$auto/codenotch.desktop" <<EOF
-[Desktop Entry]
-Type=Application
-Name=Codenotch
-Exec="$root/scripts/run-linux.sh" --silent
-Terminal=false
-X-GNOME-Autostart-enabled=true
-EOF
-  echo "autostart:   $auto/codenotch.desktop"
-fi

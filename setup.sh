@@ -69,7 +69,6 @@ cp -R "$UP/windows" "$HERE/app"
 # ---------------------------------------------------------------- 3. overlay
 say "Adding the Linux modules and wiring them in"
 cp "$HERE/overlay/linux_focus.rs" "$HERE/app/codenotch/src/linux_focus.rs"
-cp "$HERE/overlay/codex_shape.rs" "$HERE/app/codenotch/src/codex_shape.rs"
 cp "$HERE/overlay/codex_spend.rs" "$HERE/app/codenotch/src/codex_spend.rs"
 
 python3 - "$HERE/app/codenotch/src" <<'PY'
@@ -88,7 +87,7 @@ def patch(name, old, new):
 
 patch("main.rs",
       "mod focus;\n",
-      "mod focus;\n#[cfg(not(windows))]\nmod linux_focus;\nmod codex_shape;\nmod codex_spend;\n")
+      "mod focus;\n#[cfg(not(windows))]\nmod linux_focus;\nmod codex_spend;\n")
 
 # Enterprise / Business workspace accounts report a monthly spend cap instead of 5-hour and weekly
 # windows. When the reply has no windows, show that cap as one (Codex's /status calls it
@@ -101,23 +100,17 @@ patch("codex.rs",
       "                    }\n"
       "                    if !windows.is_empty() {\n")
 
-# Diagnostic: when Codex's usage reply carries no windows (an Enterprise account reports a monthly
-# credit limit instead), log the layout of the fields that could hold it, once per run.
-patch("codex.rs",
-      'crate::applog(&format!("codex: usage reply has no windows (top-level keys {keys:?}), falling back to the rollout"));\n',
-      'crate::applog(&format!("codex: usage reply has no windows (top-level keys {keys:?}), falling back to the rollout"));\n'
-      '                    static SHAPE_ONCE: std::sync::Once = std::sync::Once::new();\n'
-      '                    SHAPE_ONCE.call_once(|| {\n'
-      '                        for k in ["credits", "spend_control", "rate_limit", "rate_limit_reset_credits"] {\n'
-      '                            if let Some(x) = v.get(k) {\n'
-      '                                crate::applog(&format!("codex: shape {k} = {}", crate::codex_shape::shape(x)));\n'
-      '                            }\n'
-      '                        }\n'
-      '                    });\n')
-
 patch("focus.rs",
       "#[cfg(not(windows))]\npub fn focus_terminal(_claude_pid: u32) -> bool {\n    false\n}\n",
       "#[cfg(not(windows))]\npub fn focus_terminal(claude_pid: u32) -> bool {\n    crate::linux_focus::focus_terminal(claude_pid)\n}\n")
+
+# The hook binary is looked up (and the app launched by the hook) with a hard-coded ".exe".
+patch("hooks_install.rs",
+      '.join("codenotch-hook.exe");',
+      '.join(format!("codenotch-hook{}", std::env::consts::EXE_SUFFIX));')
+patch("../../codenotch-hook/src/main.rs",
+      'dir.join("codenotch.exe");',
+      'dir.join(format!("codenotch{}", std::env::consts::EXE_SUFFIX));')
 
 # "Start at sign-in" writes the binary straight into the autostart entry. Under Wayland the notch
 # must be an X11 (XWayland) client to place itself, so the entry goes through `env`.
@@ -133,8 +126,8 @@ install -m 0755 "$HERE/scripts/install-desktop.sh"  "$HERE/app/scripts/install-d
 
 # ---------------------------------------------------------------- 5. test + build
 cd "$HERE/app"
-say "Unit tests for the new modules"
-cargo test -p codenotch -- linux_focus codex_shape codex_spend 2>&1 | tail -20
+say "Unit tests for the new modules (release profile, so the build below reuses it)"
+cargo test --release -p codenotch -- linux_focus codex_spend 2>&1 | tail -20
 
 say "Building (first build compiles SQLite and Tauri: expect 5-15 minutes)"
 cargo build --release

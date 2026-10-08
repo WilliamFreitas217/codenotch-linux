@@ -32,7 +32,8 @@ Se você já tem Rust e as bibliotecas: `bash setup.sh --no-deps`. Sem Rust:
 
 Rodadas seguintes reaproveitam o clone do upstream e o cache de build, então são rápidas.
 
-Para iniciar com o sistema: `./app/scripts/install-desktop.sh --autostart`.
+Atalho no menu de aplicativos: `./app/scripts/install-desktop.sh`. Para iniciar com o sistema, ligue
+"Start at sign-in" nas configurações do app (ou `./app/scripts/run-linux.sh autostart on`).
 
 ### Iniciar e reiniciar pelo terminal
 
@@ -44,7 +45,7 @@ ajustando o caminho:
 unalias notch_start 2>/dev/null   # evita colidir com um alias antigo de mesmo nome
 notch_start() {
   pkill -x codenotch              # para o notch, se estiver rodando
-  sleep 0.5                       # dá tempo do processo antigo terminar (o app aceita uma instância só)
+  while pgrep -x codenotch >/dev/null; do sleep 0.1; done   # espera ele sair (o app aceita uma instância só)
   setsid -f ~/codenotch-linux/app/scripts/run-linux.sh >/dev/null 2>&1
 }
 ```
@@ -71,17 +72,17 @@ Detalhes que costumam dar problema:
 |---|---|
 | `overlay/linux_focus.rs` | Detecta a sessão (X11 / Wayland; GNOME, KDE, Sway, Hyprland) e implementa "pular para o terminal da sessão", que no upstream devolvia sempre `false` no Linux. |
 | `overlay/codex_spend.rs` | Lê o limite mensal de gasto (`spend_control`) das contas de workspace do Codex e o mostra como uma janela de uso. |
-| `overlay/codex_shape.rs` | Diagnóstico: grava no log, uma vez por execução, só o **formato** de quatro campos da resposta de uso do Codex. E-mails e campos com nome de credencial são mascarados. |
 | `setup.sh` | Baixa só o commit travado do upstream, aplica os módulos, roda os testes e compila. Falha com mensagem clara se o upstream mudou. |
-| `scripts/` | Launcher (`run-linux.sh`), diagnóstico (`doctor-linux.sh`) e atalho de menu/autostart (`install-desktop.sh`). |
+| `scripts/` | Launcher (`run-linux.sh`), diagnóstico (`doctor-linux.sh`) e atalho de menu (`install-desktop.sh`). |
 
-O `setup.sh` também corrige a entrada de autostart que o app grava, para que ela passe por `GDK_BACKEND=x11`.
+O `setup.sh` também corrige a entrada de autostart que o app grava, para que ela passe por `GDK_BACKEND=x11`, e o
+caminho do `codenotch-hook`, que no upstream tinha `.exe` fixo e quebrava o "Let Claude Code notify Codenotch".
 
 ## Testes
 
 ```bash
-cd app && cargo test -p codenotch -- linux_focus codex_shape codex_spend    # 19 testes dos módulos novos
-cd app && cargo test                                                         # suíte inteira do upstream
+cd app && cargo test --release -p codenotch -- linux_focus codex_spend    # 16 testes dos módulos novos
+cd app && cargo test --release                                           # suíte inteira do upstream
 ```
 
 ## Se algo der errado
@@ -100,7 +101,7 @@ cd app && cargo test                                                         # s
 
 - Ubuntu, sessão **X11**, com Claude Code, Codex (conta Enterprise) e Cursor: notch, anéis de uso e limite mensal
   do Codex funcionando.
-- Os módulos novos têm testes unitários (19).
+- Os módulos novos têm testes unitários (16).
 
 **Ainda não confirmado em uso real:** o "pular para o terminal" (a lógica tem testes, o clique em tela real ainda
 não foi exercitado) e qualquer sessão **Wayland**.
@@ -110,6 +111,11 @@ não foi exercitado) e qualquer sessão **Wayland**.
 - **Wayland:** roda via XWayland, que posiciona a janela e a mantém no topo. "Pular para o terminal" deve funcionar
   no X11, no Sway e no Hyprland; no GNOME e no KDE em Wayland puro não há API para isso e o app apenas avisa.
 - **Wayland nativo (gtk-layer-shell):** não implementado.
+- **Terminais de processo único** (gnome-terminal, o padrão do Ubuntu; kitty/Ghostty em instância única): todas as
+  janelas pertencem ao mesmo processo, então com várias abertas o "pular" pode trazer a janela errada, e nunca escolhe
+  a aba.
+- **tmux / screen:** o Claude roda como filho do servidor do multiplexador, não do terminal, então o "pular" não
+  encontra janela.
 - **Fora do escopo:** atualização automática, link com o celular e os recursos exclusivos do macOS.
 - O cartão mostra a porcentagem e a data de renovação do limite mensal, mas não o valor em dólares.
 

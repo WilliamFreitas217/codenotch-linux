@@ -70,6 +70,7 @@ cp -R "$UP/windows" "$HERE/app"
 say "Adding the Linux modules and wiring them in"
 cp "$HERE/overlay/linux_focus.rs" "$HERE/app/codenotch/src/linux_focus.rs"
 cp "$HERE/overlay/codex_spend.rs" "$HERE/app/codenotch/src/codex_spend.rs"
+cp "$HERE/overlay/linux_x11.rs"   "$HERE/app/codenotch/src/linux_x11.rs"
 
 python3 - "$HERE/app/codenotch/src" <<'PY'
 import pathlib, sys
@@ -87,7 +88,21 @@ def patch(name, old, new):
 
 patch("main.rs",
       "mod focus;\n",
-      "mod focus;\n#[cfg(not(windows))]\nmod linux_focus;\nmod codex_spend;\n")
+      "mod focus;\n#[cfg(not(windows))]\nmod linux_focus;\n#[cfg(target_os = \"linux\")]\nmod linux_x11;\nmod codex_spend;\n")
+
+# Some machines abort at startup with "[xcb] Unknown sequence number ... XInitThreads has not been
+# called". Turn Xlib's thread support on first thing, before GTK exists.
+patch("main.rs",
+      "fn main() {\n    #[cfg(windows)]\n    adopt_system_proxy();\n",
+      "fn main() {\n    // Xlib thread support has to be on before GTK starts (see linux_x11.rs)\n    #[cfg(target_os = \"linux\")]\n    linux_x11::init_threads();\n    #[cfg(windows)]\n    adopt_system_proxy();\n")
+
+# linux_x11.rs opens libX11 through x11-dl. It is already in the tree (tao uses it); this makes it direct.
+cargo = src.parent / "Cargo.toml"
+text = cargo.read_text()
+if "x11-dl" in text or "cfg(target_os = \"linux\")" in text:
+    sys.exit("Cargo.toml: already has an x11-dl or linux section; upstream changed, adjust setup.sh")
+cargo.write_text(text.rstrip("\n") + "\n\n# Linux: XInitThreads (src/linux_x11.rs)\n[target.'cfg(target_os = \"linux\")'.dependencies]\nx11-dl = \"2\"\n")
+print("patched Cargo.toml")
 
 # Enterprise / Business workspace accounts report a monthly spend cap instead of 5-hour and weekly
 # windows. When the reply has no windows, show that cap as one (Codex's /status calls it
@@ -127,7 +142,7 @@ install -m 0755 "$HERE/scripts/install-desktop.sh"  "$HERE/app/scripts/install-d
 # ---------------------------------------------------------------- 5. test + build
 cd "$HERE/app"
 say "Unit tests for the new modules (release profile, so the build below reuses it)"
-cargo test --release -p codenotch -- linux_focus codex_spend 2>&1 | tail -20
+cargo test --release -p codenotch -- linux_focus linux_x11 codex_spend 2>&1 | tail -20
 
 say "Building (first build compiles SQLite and Tauri: expect 5-15 minutes)"
 cargo build --release

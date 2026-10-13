@@ -72,6 +72,7 @@ Detalhes que costumam dar problema:
 |---|---|
 | `overlay/linux_focus.rs` | Detecta a sessão (X11 / Wayland; GNOME, KDE, Sway, Hyprland) e implementa "pular para o terminal da sessão", que no upstream devolvia sempre `false` no Linux. |
 | `overlay/codex_spend.rs` | Lê o limite mensal de gasto (`spend_control`) das contas de workspace do Codex e o mostra como uma janela de uso. |
+| `overlay/linux_x11.rs` | Liga o suporte a threads do Xlib (`XInitThreads()`) no início do app, antes do GTK. Evita o crash `[xcb] Unknown sequence number` que algumas máquinas têm ao abrir. |
 | `setup.sh` | Baixa só o commit travado do upstream, aplica os módulos, roda os testes e compila. Falha com mensagem clara se o upstream mudou. |
 | `scripts/` | Launcher (`run-linux.sh`), diagnóstico (`doctor-linux.sh`) e atalho de menu (`install-desktop.sh`). |
 
@@ -81,7 +82,7 @@ caminho do `codenotch-hook`, que no upstream tinha `.exe` fixo e quebrava o "Let
 ## Testes
 
 ```bash
-cd app && cargo test --release -p codenotch -- linux_focus codex_spend    # 16 testes dos módulos novos
+cd app && cargo test --release -p codenotch -- linux_focus linux_x11 codex_spend    # 18 testes dos módulos novos
 cd app && cargo test --release                                           # suíte inteira do upstream
 ```
 
@@ -90,6 +91,7 @@ cd app && cargo test --release                                           # suít
 | Sintoma | O que tentar |
 |---|---|
 | Janela vazia ou preta | `CODENOTCH_WEBKIT_SAFE=1 ./app/scripts/run-linux.sh` (desliga o renderer DMA-BUF do WebKitGTK; comum com NVIDIA). |
+| Crash ao abrir: `[xcb] Unknown sequence number ... XInitThreads has not been called` | Acesso ao X11 de várias threads sem o Xlib ter suporte a threads. O `setup.sh` agora liga o `XInitThreads()` no início do app (`overlay/linux_x11.rs`): atualize o repo e rode `bash setup.sh --no-deps`. Se persistir, abra uma issue com a saída de `./app/scripts/doctor-linux.sh`, a GPU (`lspci \| grep -iE 'vga\|3d'`) e a versão do WebKitGTK (`dpkg -l \| grep libwebkit2gtk-4.1-0`). |
 | Fundo do notch não transparente | Precisa de compositor. No Ubuntu/GNOME já existe; em WMs leves, rode `picom`. |
 | Sem ícone na bandeja (GNOME) | `sudo apt install gnome-shell-extension-appindicator`, saia e entre na sessão. |
 | Anel do Claude em "Waiting for first reading..." | Normal nos primeiros instantes. Se persistir, veja `~/.config/codenotch/run.log`. |
@@ -101,10 +103,11 @@ cd app && cargo test --release                                           # suít
 
 - Ubuntu, sessão **X11**, com Claude Code, Codex (conta Enterprise) e Cursor: notch, anéis de uso e limite mensal
   do Codex funcionando.
-- Os módulos novos têm testes unitários (16).
+- Os módulos novos têm testes unitários (18).
 
 **Ainda não confirmado em uso real:** o "pular para o terminal" (a lógica tem testes, o clique em tela real ainda
-não foi exercitado) e qualquer sessão **Wayland**.
+não foi exercitado), qualquer sessão **Wayland** e a correção do crash `[xcb] Unknown sequence number`, que segue o
+remédio padrão para esse erro mas ainda não foi confirmada na máquina que o reportou.
 
 ## Limites
 

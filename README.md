@@ -65,6 +65,9 @@ Detalhes que costumam dar problema:
 - A pílula fica na borda direita da tela principal. Passe o mouse e o cartão abre.
 - `Alt` + arrastar move o notch ao longo da borda.
 - Clique numa sessão do cartão do Claude para trazer o terminal dela para a frente (veja "Limites").
+- Quando uma sessão do Claude Code termina o turno, toca um som (`complete` do tema de sons do desktop); quando ela
+  para pedindo permissão, outro (`message-new-instant`). Para desligar: Settings → Notifications →
+  "Sound when Claude finishes". Se os sons de alerta do sistema estiverem desligados, ele respeita.
 
 ## O que este repo acrescenta ao port do Windows
 
@@ -72,17 +75,19 @@ Detalhes que costumam dar problema:
 |---|---|
 | `overlay/linux_focus.rs` | Detecta a sessão (X11 / Wayland; GNOME, KDE, Sway, Hyprland) e implementa "pular para o terminal da sessão", que no upstream devolvia sempre `false` no Linux. |
 | `overlay/codex_spend.rs` | Lê o limite mensal de gasto (`spend_control`) das contas de workspace do Codex e o mostra como uma janela de uso. |
+| `overlay/chime.rs` | O som de fim de turno do Claude Code (como no app do macOS) e o som do cartão de renovação, que no upstream era mudo fora do Windows. |
 | `overlay/linux_x11.rs` | Liga o suporte a threads do Xlib (`XInitThreads()`) no início do app, antes do GTK. Evita o crash `[xcb] Unknown sequence number` que algumas máquinas têm ao abrir. |
 | `setup.sh` | Baixa só o commit travado do upstream, aplica os módulos, roda os testes e compila. Falha com mensagem clara se o upstream mudou. |
 | `scripts/` | Launcher (`run-linux.sh`), diagnóstico (`doctor-linux.sh`) e atalho de menu (`install-desktop.sh`). |
 
-O `setup.sh` também corrige a entrada de autostart que o app grava, para que ela passe por `GDK_BACKEND=x11`, e o
-caminho do `codenotch-hook`, que no upstream tinha `.exe` fixo e quebrava o "Let Claude Code notify Codenotch".
+O `setup.sh` também corrige a entrada de autostart que o app grava, para que ela passe por `GDK_BACKEND=x11`, o
+caminho do `codenotch-hook`, que no upstream tinha `.exe` fixo e quebrava o "Let Claude Code notify Codenotch", e a
+busca do `gh` pelo provider do Copilot, que também procurava só `gh.exe`.
 
 ## Testes
 
 ```bash
-cd app && cargo test --release -p codenotch -- linux_focus linux_x11 codex_spend    # 18 testes dos módulos novos
+cd app && cargo test --release -p codenotch -- linux_focus linux_x11 codex_spend chime    # 19 testes dos módulos novos
 cd app && cargo test --release                                           # suíte inteira do upstream
 ```
 
@@ -97,17 +102,17 @@ cd app && cargo test --release                                           # suít
 | Anel do Claude em "Waiting for first reading..." | Normal nos primeiros instantes. Se persistir, veja `~/.config/codenotch/run.log`. |
 | Anel do Codex em "—" | A conta pode não ter janelas nem limite de gasto. Veja `grep -i codex ~/.config/codenotch/run.log`. |
 | `setup.sh` reclama de âncora no patch | O upstream mudou. Use o commit travado (padrão) ou ajuste o trecho indicado no erro. |
-| Copilot sem leitura | O provider do upstream procura `gh.exe`. Contorno (não testado): `GH_TOKEN="$(gh auth token)" ./app/scripts/run-linux.sh`. |
 
 ## Testado em
 
 - Ubuntu, sessão **X11**, com Claude Code, Codex (conta Enterprise) e Cursor: notch, anéis de uso e limite mensal
   do Codex funcionando.
-- Os módulos novos têm testes unitários (18).
+- Os módulos novos têm testes unitários (19).
 
 **Ainda não confirmado em uso real:** o "pular para o terminal" (a lógica tem testes, o clique em tela real ainda
 não foi exercitado), qualquer sessão **Wayland** e a correção do crash `[xcb] Unknown sequence number`, que segue o
-remédio padrão para esse erro mas ainda não foi confirmada na máquina que o reportou.
+remédio padrão para esse erro mas ainda não foi confirmada na máquina que o reportou. O som de fim de turno tem teste da lógica de
+transição e o player foi conferido, mas ainda não com uma sessão real do Claude Code terminando.
 
 ## Limites
 

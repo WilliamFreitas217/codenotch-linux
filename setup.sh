@@ -71,6 +71,7 @@ say "Adding the Linux modules and wiring them in"
 cp "$HERE/overlay/linux_focus.rs" "$HERE/app/codenotch/src/linux_focus.rs"
 cp "$HERE/overlay/codex_spend.rs" "$HERE/app/codenotch/src/codex_spend.rs"
 cp "$HERE/overlay/linux_x11.rs"   "$HERE/app/codenotch/src/linux_x11.rs"
+cp "$HERE/overlay/chime.rs"       "$HERE/app/codenotch/src/chime.rs"
 
 python3 - "$HERE/app/codenotch/src" <<'PY'
 import pathlib, sys
@@ -88,7 +89,7 @@ def patch(name, old, new):
 
 patch("main.rs",
       "mod focus;\n",
-      "mod focus;\n#[cfg(not(windows))]\nmod linux_focus;\n#[cfg(target_os = \"linux\")]\nmod linux_x11;\nmod codex_spend;\n")
+      "mod focus;\n#[cfg(not(windows))]\nmod linux_focus;\n#[cfg(target_os = \"linux\")]\nmod linux_x11;\nmod codex_spend;\nmod chime;\n")
 
 # Some machines abort at startup with "[xcb] Unknown sequence number ... XInitThreads has not been
 # called". Turn Xlib's thread support on first thing, before GTK exists.
@@ -127,6 +128,76 @@ patch("../../codenotch-hook/src/main.rs",
       'dir.join("codenotch.exe");',
       'dir.join(format!("codenotch{}", std::env::consts::EXE_SUFFIX));')
 
+# Session chime (chime.rs), as on macOS: when a Claude Code turn ends or stops to ask, the store
+# remembers which sound is due and broadcast() plays it. Hooks and the transcript watcher both go
+# through Store::apply, so this is the one place that sees every transition.
+patch("state.rs",
+      "pub struct Store {\n    map: HashMap<String, Session>,\n}\n",
+      "pub struct Store {\n    map: HashMap<String, Session>,\n    /// A sound owed by the last transition, played (and cleared) by broadcast()\n    pub chime: Option<&'static str>,\n}\n")
+patch("state.rs",
+      "        // Broadcast only on a visible change, so the watcher's rapid appends cannot cause a storm\n        (\n",
+      "        let chime = crate::chime::sound_for(&before.0, &s.state);\n"
+      "        // Broadcast only on a visible change, so the watcher's rapid appends cannot cause a storm\n        let changed = (\n")
+patch("state.rs",
+      "        ) != before\n    }\n\n    pub fn dismiss",
+      "        ) != before;\n        if chime.is_some() {\n            self.chime = chime;\n        }\n        changed\n    }\n\n    pub fn dismiss")
+patch("main.rs",
+      "        let store = st.store.lock().unwrap();\n        let cfg = st.cfg.lock().unwrap();\n        store.snapshot(",
+      "        let mut store = st.store.lock().unwrap();\n        let cfg = st.cfg.lock().unwrap();\n"
+      "        if let Some(sound) = store.chime.take() {\n            if cfg.session_end_sound {\n                crate::chime::play(sound);\n            }\n        }\n"
+      "        store.snapshot(")
+patch("config.rs",
+      "    pub reset_notification_sound: bool,\n",
+      "    pub reset_notification_sound: bool,\n    /// false = no sound when a Claude Code turn ends or stops to ask (chime.rs)\n    #[serde(default = \"yes\")]\n    pub session_end_sound: bool,\n")
+patch("config.rs",
+      "            reset_notification_sound: true,\n",
+      "            reset_notification_sound: true,\n            session_end_sound: true,\n")
+# ...and its switch in Settings → Notifications (other languages fall back to the English text)
+patch("main.rs",
+      "#[tauri::command]\nfn get_reset_notification_sound(",
+      "#[tauri::command]\nfn get_session_end_sound(app: AppHandle) -> bool {\n"
+      "    app.state::<AppState>().cfg.lock().unwrap().session_end_sound\n}\n\n"
+      "#[tauri::command]\nfn set_session_end_sound(app: AppHandle, on: bool) -> bool {\n"
+      "    let st = app.state::<AppState>();\n    let mut cfg = st.cfg.lock().unwrap();\n"
+      "    cfg.session_end_sound = on;\n    config::save(&cfg);\n    on\n}\n\n"
+      "#[tauri::command]\nfn get_reset_notification_sound(")
+patch("main.rs",
+      "            get_reset_notification_sound,\n",
+      "            get_reset_notification_sound,\n            get_session_end_sound,\n            set_session_end_sound,\n")
+html = "../ui/settings.html"
+patch(html,
+      "          <div class=\"item\"><span>Preview the reset card</span>",
+      "          <div class=\"item\"><span>Sound when Claude finishes</span><button class=\"switch\" id=\"sw-session-sound\" role=\"switch\" aria-checked=\"false\" aria-label=\"Sound when Claude finishes\"></button></div>\n"
+      "          <div class=\"item cap\">Plays when a Claude Code session finishes its turn or stops to ask for permission.</div>\n"
+      "          <div class=\"item\"><span>Preview the reset card</span>")
+patch(html,
+      "const STATUS_TEXT = {\n",
+      "STATIC_TEXT['pt-BR']['Sound when Claude finishes'] = 'Som quando o Claude termina';\n"
+      "STATIC_TEXT['pt-BR']['Plays when a Claude Code session finishes its turn or stops to ask for permission.'] = 'Toca quando uma sessão do Claude Code termina o turno ou para pedindo permissão.';\n"
+      "const STATUS_TEXT = {\n")
+patch(html,
+      "document.getElementById('sw-reset-sound').addEventListener('click', () => resetSound.toggle());\n",
+      "document.getElementById('sw-reset-sound').addEventListener('click', () => resetSound.toggle());\n"
+      "const sessionSound = remote('get_session_end_sound', 'set_session_end_sound', 'Sound when Claude finishes', () => drawSwitch(document.getElementById('sw-session-sound'), sessionSound));\n"
+      "document.getElementById('sw-session-sound').addEventListener('click', () => sessionSound.toggle());\n")
+patch(html,
+      "  drawSwitch(document.getElementById('sw-reset-sound'), resetSound);\n",
+      "  drawSwitch(document.getElementById('sw-reset-sound'), resetSound);\n  drawSwitch(document.getElementById('sw-session-sound'), sessionSound);\n")
+patch(html,
+      "    resetSound.refresh(),\n",
+      "    resetSound.refresh(),\n    sessionSound.refresh(),\n")
+patch("reset_alert.rs",
+      "#[cfg(not(windows))]\nfn play_notification_sound() {}\n",
+      "#[cfg(not(windows))]\nfn play_notification_sound() {\n    crate::chime::play(\"message\");\n}\n")
+
+# Copilot borrows the session of the GitHub CLI, but upstream only ever looks for "gh.exe".
+patch("copilot.rs",
+      'cands.push(dir.join("gh.exe"));',
+      'cands.push(dir.join(format!("gh{}", std::env::consts::EXE_SUFFIX)));')
+patch("copilot.rs",
+      'None => "gh.exe not found".into(),',
+      'None => "gh not found".into(),')
+
 # "Start at sign-in" writes the binary straight into the autostart entry. Under Wayland the notch
 # must be an X11 (XWayland) client to place itself, so the entry goes through `env`.
 patch("autostart.rs",
@@ -142,7 +213,7 @@ install -m 0755 "$HERE/scripts/install-desktop.sh"  "$HERE/app/scripts/install-d
 # ---------------------------------------------------------------- 5. test + build
 cd "$HERE/app"
 say "Unit tests for the new modules (release profile, so the build below reuses it)"
-cargo test --release -p codenotch -- linux_focus linux_x11 codex_spend 2>&1 | tail -20
+cargo test --release -p codenotch -- linux_focus linux_x11 codex_spend chime 2>&1 | tail -20
 
 say "Building (first build compiles SQLite and Tauri: expect 5-15 minutes)"
 cargo build --release

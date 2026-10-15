@@ -75,6 +75,7 @@ cp "$HERE/overlay/chime.rs"       "$HERE/app/codenotch/src/chime.rs"
 cp "$HERE/overlay/reply_preview.rs" "$HERE/app/codenotch/src/reply_preview.rs"
 cp "$HERE/overlay/reply-card.html"  "$HERE/app/codenotch/ui/reply-card.html"
 cp "$HERE/overlay/inbox.rs"         "$HERE/app/codenotch/src/inbox.rs"
+cp "$HERE/overlay/agent_notify.rs"  "$HERE/app/codenotch/src/agent_notify.rs"
 
 python3 - "$HERE/app/codenotch/src" "$HERE/overlay/inbox.js" <<'PY'
 import pathlib, sys
@@ -92,7 +93,7 @@ def patch(name, old, new):
 
 patch("main.rs",
       "mod focus;\n",
-      "mod focus;\n#[cfg(not(windows))]\nmod linux_focus;\n#[cfg(target_os = \"linux\")]\nmod linux_x11;\nmod codex_spend;\nmod chime;\nmod reply_preview;\nmod inbox;\n")
+      "mod focus;\n#[cfg(not(windows))]\nmod linux_focus;\n#[cfg(target_os = \"linux\")]\nmod linux_x11;\nmod codex_spend;\nmod chime;\nmod reply_preview;\nmod inbox;\nmod agent_notify;\n")
 
 # Some machines abort at startup with "[xcb] Unknown sequence number ... XInitThreads has not been
 # called". Turn Xlib's thread support on first thing, before GTK exists.
@@ -214,7 +215,7 @@ patch("reset_alert.rs",
       "    push(app, QueuedAlert { event, preview, reply: None });\n}\n\n"
       "/// A finished Claude turn (reply_preview.rs), through the same queue and window\n"
       "pub fn enqueue_reply(app: &AppHandle, reply: crate::reply_preview::Reply) {\n"
-      "    let event = ResetEvent { provider: \"claude\".into(), window_label: String::new(), used_fraction: 0.0, next_reset_at: None };\n"
+      "    let event = ResetEvent { provider: reply.provider.clone(), window_label: String::new(), used_fraction: 0.0, next_reset_at: None };\n"
       "    push(app, QueuedAlert { event, preview: false, reply: Some(reply) });\n}\n\n"
       "fn push(app: &AppHandle, alert: QueuedAlert) {\n"
       "    let queue = &app.state::<AppState>().reset_alerts;\n"
@@ -360,6 +361,12 @@ patch(notch,
       "function renderCard(){\n  const c=document.getElementById('card');\n"
       "  if(hoverId==='inbox'){ renderInboxCard(c); return; }\n")
 
+# Codex and Cursor replies and permission requests (agent_notify.rs), from the activity probe's own
+# transitions: what stopped working has finished, what turned to waiting is asking.
+patch("activity.rs",
+      "                last = found.clone();\n",
+      "                crate::agent_notify::changed(&app, &last, &found);\n                last = found.clone();\n")
+
 # Copilot borrows the session of the GitHub CLI, but upstream only ever looks for "gh.exe".
 patch("copilot.rs",
       'cands.push(dir.join("gh.exe"));',
@@ -383,7 +390,7 @@ install -m 0755 "$HERE/scripts/install-desktop.sh"  "$HERE/app/scripts/install-d
 # ---------------------------------------------------------------- 5. test + build
 cd "$HERE/app"
 say "Unit tests for the new modules (release profile, so the build below reuses it)"
-cargo test --release -p codenotch -- linux_focus linux_x11 codex_spend chime reply_preview inbox 2>&1 | tail -20
+cargo test --release -p codenotch -- linux_focus linux_x11 codex_spend chime reply_preview inbox agent_notify 2>&1 | tail -20
 
 say "Building (first build compiles SQLite and Tauri: expect 5-15 minutes)"
 cargo build --release

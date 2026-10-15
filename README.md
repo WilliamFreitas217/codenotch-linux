@@ -76,6 +76,10 @@ Detalhes que costumam dar problema:
   alguma resposta terminada, pedido de permissão ou renovação de cota. Passe o mouse sobre ele para ver a lista;
   clique num item de sessão para ir até ela. Clicar no sino marca tudo como lido. O histórico fica só em memória
   (últimos 40) e se perde quando o app reinicia.
+- Codex e Cursor também entram no histórico (e na prévia, se ligada): a resposta final quando terminam, e um aviso
+  quando param esperando aprovação. A resposta vem do rollout do Codex (`task_complete`) e do `state.vscdb` do
+  Cursor. Clicar nesses itens não leva a lugar nenhum, porque não há sessão de terminal para focar. O aviso de
+  aprovação do Codex só existe no app desktop; no CLI o rollout não registra a espera.
 
 ## O que este repo acrescenta ao port do Windows
 
@@ -86,6 +90,7 @@ Detalhes que costumam dar problema:
 | `overlay/chime.rs` | O som de fim de turno do Claude Code (como no app do macOS) e o som do cartão de renovação, que no upstream era mudo fora do Windows. |
 | `overlay/reply_preview.rs`, `overlay/reply-card.html` | A prévia da resposta: lê o fim do turno no transcript e o mostra na janela e na fila do cartão de renovação. |
 | `overlay/inbox.rs`, `overlay/inbox.js` | O histórico de notificações e o sino no notch (o JS é inserido no `notch.html`). |
+| `overlay/agent_notify.rs` | Respostas e pedidos de aprovação do Codex e do Cursor, a partir das transições que o `activity.rs` já detecta. |
 | `overlay/linux_x11.rs` | Liga o suporte a threads do Xlib (`XInitThreads()`) no início do app, antes do GTK. Evita o crash `[xcb] Unknown sequence number` que algumas máquinas têm ao abrir. |
 | `setup.sh` | Baixa só o commit travado do upstream, aplica os módulos, roda os testes e compila. Falha com mensagem clara se o upstream mudou. |
 | `scripts/` | Launcher (`run-linux.sh`), diagnóstico (`doctor-linux.sh`) e atalho de menu (`install-desktop.sh`). |
@@ -97,7 +102,7 @@ busca do `gh` pelo provider do Copilot, que também procurava só `gh.exe`.
 ## Testes
 
 ```bash
-cd app && cargo test --release -p codenotch -- linux_focus linux_x11 codex_spend chime reply_preview inbox    # 23 testes dos módulos novos
+cd app && cargo test --release -p codenotch -- linux_focus linux_x11 codex_spend chime reply_preview inbox agent_notify    # 25 testes dos módulos novos
 cd app && cargo test --release                                           # suíte inteira do upstream
 ```
 

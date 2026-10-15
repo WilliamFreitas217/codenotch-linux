@@ -13,6 +13,9 @@ pub const SHOW_FOR: Duration = Duration::from_secs(12);
 const MAX_CHARS: usize = 600;
 
 pub struct Reply {
+    /// Whose glyph the card shows
+    pub provider: String,
+    /// The Claude session a click jumps to; empty for Codex and Cursor
     pub session: String,
     pub title: String,
     pub subtitle: String,
@@ -46,7 +49,7 @@ pub fn fire(app: &AppHandle, session: String, title: String, prompt: String, pop
         } else {
             format!("{}: {prompt}", if pt { "você" } else { "you" })
         };
-        crate::reset_alert::enqueue_reply(&app, Reply { session, title, subtitle, body });
+        crate::reset_alert::enqueue_reply(&app, Reply { provider: "claude".into(), session, title, subtitle, body });
     });
 }
 
@@ -78,7 +81,7 @@ fn reply_text(entry: &serde_json::Value) -> Option<String> {
 }
 
 /// Markdown to plain lines: no fences, headings, emphasis or table rules; bullets become "•"
-fn clean(md: &str) -> String {
+pub(crate) fn clean(md: &str) -> String {
     let lines: Vec<String> = md
         .lines()
         .map(str::trim)
@@ -89,7 +92,7 @@ fn clean(md: &str) -> String {
                 Some(rest) => format!("• {rest}"),
                 None => l.to_string(),
             };
-            l.replace("**", "").replace("__", "").replace('`', "")
+            strip_links(&l).replace("**", "").replace("__", "").replace('`', "")
         })
         .collect();
     let out = lines.join("\n");
@@ -98,6 +101,23 @@ fn clean(md: &str) -> String {
     } else {
         out
     }
+}
+
+/// `[text](url)` to `text`
+fn strip_links(s: &str) -> String {
+    let mut out = String::new();
+    let mut rest = s;
+    while let Some(mid) = rest.find("](") {
+        let (Some(open), Some(close)) = (rest[..mid].rfind('['), rest[mid..].find(')')) else {
+            out.push_str(&rest[..mid + 2]);
+            rest = &rest[mid + 2..];
+            continue;
+        };
+        out.push_str(&rest[..open]);
+        out.push_str(&rest[open + 1..mid]);
+        rest = &rest[mid + close + 1..];
+    }
+    out + rest
 }
 
 #[cfg(test)]
@@ -120,5 +140,7 @@ mod tests {
         let md = "## Feito\n\n- **um** item\n* `dois`\n```rust\nfn x() {}\n```\n| a |\n|---|";
         assert_eq!(clean(md), "Feito\n• um item\n• dois\nfn x() {}\n| a |");
         assert_eq!(clean(&"x".repeat(700)).chars().count(), MAX_CHARS + 1);
+        assert_eq!(clean("PR [#154](https://x/154) e [`a.py`](/a.py:3) ok"), "PR #154 e a.py ok");
+        assert_eq!(clean("sem link ](nada"), "sem link ](nada");
     }
 }

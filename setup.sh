@@ -309,6 +309,49 @@ patch("reset_alert.rs",
       "        format!(\"{} {}\", crate::provider_label(&event.provider), word_renewed(&lang)),\n"
       "        format!(\"{} {} · {} · {}%\", traymenu::label(&event.window_label, &lang), word_renewed(&lang), word_quota_available(&lang), traymenu::pct(event.used_fraction)),\n"
       "        String::new());\n")
+# ...and its switch in Settings → Notifications: off records nothing and clears what is there
+patch("config.rs",
+      "    pub reply_preview: bool,\n",
+      "    pub reply_preview: bool,\n    /// false = nothing goes into the notch's notification history (inbox.rs)\n    #[serde(default = \"yes\")]\n    pub notification_history: bool,\n")
+patch("config.rs",
+      "            reply_preview: false,\n",
+      "            reply_preview: false,\n            notification_history: true,\n")
+patch("main.rs",
+      "    let cfg = config::load();\n",
+      "    let cfg = config::load();\n    inbox::set_enabled(cfg.notification_history);\n")
+patch("main.rs",
+      "#[tauri::command]\nfn get_reply_preview(",
+      "#[tauri::command]\nfn get_notification_history(app: AppHandle) -> bool {\n"
+      "    app.state::<AppState>().cfg.lock().unwrap().notification_history\n}\n\n"
+      "#[tauri::command]\nfn set_notification_history(app: AppHandle, on: bool) -> bool {\n"
+      "    let st = app.state::<AppState>();\n    let mut cfg = st.cfg.lock().unwrap();\n"
+      "    cfg.notification_history = on;\n    config::save(&cfg);\n    inbox::set_enabled(on);\n"
+      "    if !on {\n        inbox::inbox_clear(app.clone());\n    }\n    on\n}\n\n"
+      "#[tauri::command]\nfn get_reply_preview(")
+patch("main.rs",
+      "            inbox::inbox_clear,\n",
+      "            inbox::inbox_clear,\n            get_notification_history,\n            set_notification_history,\n")
+patch(html,
+      "          <div class=\"item\"><span>Preview the reset card</span>",
+      "          <div class=\"item\"><span>Notification history</span><button class=\"switch\" id=\"sw-history\" role=\"switch\" aria-checked=\"false\" aria-label=\"Notification history\"></button></div>\n"
+      "          <div class=\"item cap\">Keep replies, approval requests and renewals behind a bell on the notch. Off records nothing and clears the list.</div>\n"
+      "          <div class=\"item\"><span>Preview the reset card</span>")
+patch(html,
+      "const STATUS_TEXT = {\n",
+      "STATIC_TEXT['pt-BR']['Notification history'] = 'Histórico de notificações';\n"
+      "STATIC_TEXT['pt-BR']['Keep replies, approval requests and renewals behind a bell on the notch. Off records nothing and clears the list.'] = 'Guarda respostas, pedidos de aprovação e renovações atrás de um sino no notch. Desligado, não grava nada e limpa a lista.';\n"
+      "const STATUS_TEXT = {\n")
+patch(html,
+      "document.getElementById('sw-reply-preview').addEventListener('click', () => replyPreview.toggle());\n",
+      "document.getElementById('sw-reply-preview').addEventListener('click', () => replyPreview.toggle());\n"
+      "const historySwitch = remote('get_notification_history', 'set_notification_history', 'Notification history', () => drawSwitch(document.getElementById('sw-history'), historySwitch));\n"
+      "document.getElementById('sw-history').addEventListener('click', () => historySwitch.toggle());\n")
+patch(html,
+      "  drawSwitch(document.getElementById('sw-reply-preview'), replyPreview);\n",
+      "  drawSwitch(document.getElementById('sw-reply-preview'), replyPreview);\n  drawSwitch(document.getElementById('sw-history'), historySwitch);\n")
+patch(html,
+      "    replyPreview.refresh(),\n",
+      "    replyPreview.refresh(),\n    historySwitch.refresh(),\n")
 notch = "../ui/notch.html"
 patch(notch,
       "const listen = window.__TAURI__.event.listen;\n",

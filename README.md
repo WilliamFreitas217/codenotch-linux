@@ -75,7 +75,8 @@ Detalhes que costumam dar problema:
 - Histórico de notificações: depois dos anéis aparece um sino, com um badge de não lidas, assim que houver
   alguma resposta terminada, pedido de permissão ou renovação de cota. Passe o mouse sobre ele para ver a lista;
   clique num item de sessão para ir até ela. Clicar no sino marca tudo como lido. O histórico fica só em memória
-  (últimos 40) e se perde quando o app reinicia.
+  (últimos 40) e se perde quando o app reinicia. Para desligar: Settings → Notifications → "Notification history"
+  (desligado, nada é gravado e a lista é limpa).
 - Codex e Cursor também entram no histórico (e na prévia, se ligada): a resposta final quando terminam, e um aviso
   quando param esperando aprovação. A resposta vem do rollout do Codex (`task_complete`) e do `state.vscdb` do
   Cursor. Clicar nesses itens não leva a lugar nenhum, porque não há sessão de terminal para focar. O aviso de

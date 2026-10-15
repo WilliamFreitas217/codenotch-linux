@@ -82,7 +82,10 @@ if(glyph.kind === 'svg' && typeof glyph.svg === 'string' && glyph.svg.startsWith
 function fit(){document.documentElement.style.zoom = String(Math.min(innerWidth/340,innerHeight/190));}
 fit(); window.addEventListener('resize',fit);
 const invoke = (cmd, args) => window.__TAURI__?.core?.invoke(cmd, args).catch(() => {});
-const dismiss = () => invoke('dismiss_reset_alert',{token:data.token});
+const dismiss = () => {
+  if(data.session) invoke('inbox_read_session',{session:data.session});
+  invoke('dismiss_reset_alert',{token:data.token});
+};
 document.getElementById('dismiss').addEventListener('click', e => { e.stopPropagation(); dismiss(); });
 document.getElementById('card').addEventListener('click', () => {
   if(data.session) invoke('focus_session',{id:data.session});

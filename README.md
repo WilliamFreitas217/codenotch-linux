@@ -72,6 +72,10 @@ Detalhes que costumam dar problema:
 - Opcional: Settings → Notifications → "Preview Claude's reply" mostra, quando uma sessão do Claude termina, um
   cartão com o início da resposta (lida do transcript). Clique nele para ir à sessão. Vem desligado porque põe a
   resposta na tela.
+- Histórico de notificações: depois dos anéis aparece um sino, com um badge de não lidas, assim que houver
+  alguma resposta terminada, pedido de permissão ou renovação de cota. Passe o mouse sobre ele para ver a lista;
+  clique num item de sessão para ir até ela. Clicar no sino marca tudo como lido. O histórico fica só em memória
+  (últimos 40) e se perde quando o app reinicia.
 
 ## O que este repo acrescenta ao port do Windows
 
@@ -81,6 +85,7 @@ Detalhes que costumam dar problema:
 | `overlay/codex_spend.rs` | Lê o limite mensal de gasto (`spend_control`) das contas de workspace do Codex e o mostra como uma janela de uso. |
 | `overlay/chime.rs` | O som de fim de turno do Claude Code (como no app do macOS) e o som do cartão de renovação, que no upstream era mudo fora do Windows. |
 | `overlay/reply_preview.rs`, `overlay/reply-card.html` | A prévia da resposta: lê o fim do turno no transcript e o mostra na janela e na fila do cartão de renovação. |
+| `overlay/inbox.rs`, `overlay/inbox.js` | O histórico de notificações e o sino no notch (o JS é inserido no `notch.html`). |
 | `overlay/linux_x11.rs` | Liga o suporte a threads do Xlib (`XInitThreads()`) no início do app, antes do GTK. Evita o crash `[xcb] Unknown sequence number` que algumas máquinas têm ao abrir. |
 | `setup.sh` | Baixa só o commit travado do upstream, aplica os módulos, roda os testes e compila. Falha com mensagem clara se o upstream mudou. |
 | `scripts/` | Launcher (`run-linux.sh`), diagnóstico (`doctor-linux.sh`) e atalho de menu (`install-desktop.sh`). |
@@ -92,7 +97,7 @@ busca do `gh` pelo provider do Copilot, que também procurava só `gh.exe`.
 ## Testes
 
 ```bash
-cd app && cargo test --release -p codenotch -- linux_focus linux_x11 codex_spend chime reply_preview    # 22 testes dos módulos novos
+cd app && cargo test --release -p codenotch -- linux_focus linux_x11 codex_spend chime reply_preview inbox    # 23 testes dos módulos novos
 cd app && cargo test --release                                           # suíte inteira do upstream
 ```
 

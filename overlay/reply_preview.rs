@@ -1,5 +1,6 @@
-//! Reply preview: when a Claude turn ends, the reset card's window shows the start of the answer,
-//! read from the session's transcript. Clicking the card jumps to the session.
+//! Reply preview: when a Claude turn ends, the start of the answer, read from the session's
+//! transcript, goes into the notch's history (inbox.rs) and, when switched on, into the reset card's
+//! window. Clicking the card jumps to the session.
 
 use crate::AppState;
 use std::path::PathBuf;
@@ -19,8 +20,8 @@ pub struct Reply {
 }
 
 /// Off the calling thread (broadcast() holds the store lock): find the transcript, read the answer,
-/// queue the card. Silently does nothing when the answer cannot be found.
-pub fn fire(app: &AppHandle, session: String, title: String, prompt: String) {
+/// record it and, with `popup`, queue the card. Silently does nothing when the answer cannot be found.
+pub fn fire(app: &AppHandle, session: String, title: String, prompt: String, popup: bool) {
     let app = app.clone();
     std::thread::spawn(move || {
         let Some(path) = transcript_of(&session) else { return };
@@ -34,6 +35,10 @@ pub fn fire(app: &AppHandle, session: String, title: String, prompt: String) {
             std::thread::sleep(Duration::from_millis(300));
         }
         let Some(body) = body.map(|b| clean(&b)).filter(|b| !b.is_empty()) else { return };
+        crate::inbox::push(&app, "reply", "claude", title.clone(), body.clone(), session.clone());
+        if !popup {
+            return;
+        }
         let lang = crate::resolved_lang(&app.state::<AppState>().cfg.lock().unwrap().lang);
         let pt = lang == "pt-BR";
         let subtitle = if prompt.is_empty() {

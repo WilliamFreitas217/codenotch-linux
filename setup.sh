@@ -74,8 +74,9 @@ cp "$HERE/overlay/linux_x11.rs"   "$HERE/app/codenotch/src/linux_x11.rs"
 cp "$HERE/overlay/chime.rs"       "$HERE/app/codenotch/src/chime.rs"
 cp "$HERE/overlay/reply_preview.rs" "$HERE/app/codenotch/src/reply_preview.rs"
 cp "$HERE/overlay/reply-card.html"  "$HERE/app/codenotch/ui/reply-card.html"
+cp "$HERE/overlay/inbox.rs"         "$HERE/app/codenotch/src/inbox.rs"
 
-python3 - "$HERE/app/codenotch/src" <<'PY'
+python3 - "$HERE/app/codenotch/src" "$HERE/overlay/inbox.js" <<'PY'
 import pathlib, sys
 
 src = pathlib.Path(sys.argv[1])
@@ -91,7 +92,7 @@ def patch(name, old, new):
 
 patch("main.rs",
       "mod focus;\n",
-      "mod focus;\n#[cfg(not(windows))]\nmod linux_focus;\n#[cfg(target_os = \"linux\")]\nmod linux_x11;\nmod codex_spend;\nmod chime;\nmod reply_preview;\n")
+      "mod focus;\n#[cfg(not(windows))]\nmod linux_focus;\n#[cfg(target_os = \"linux\")]\nmod linux_x11;\nmod codex_spend;\nmod chime;\nmod reply_preview;\nmod inbox;\n")
 
 # Some machines abort at startup with "[xcb] Unknown sequence number ... XInitThreads has not been
 # called". Turn Xlib's thread support on first thing, before GTK exists.
@@ -138,20 +139,21 @@ patch("../../codenotch-hook/src/main.rs",
 # through Store::apply, so this is the one place that sees every transition.
 patch("state.rs",
       "pub struct Store {\n    map: HashMap<String, Session>,\n}\n",
-      "pub struct Store {\n    map: HashMap<String, Session>,\n    /// A sound owed by the last transition, played (and cleared) by broadcast()\n    pub chime: Option<&'static str>,\n    /// (id, title, prompt) of a turn that just finished, for reply_preview::fire in broadcast()\n    pub reply: Option<(String, String, String)>,\n}\n")
+      "pub struct Store {\n    map: HashMap<String, Session>,\n    /// A sound owed by the last transition, played (and cleared) by broadcast()\n    pub chime: Option<&'static str>,\n    /// (id, title, prompt) of a turn that just finished, for reply_preview::fire in broadcast()\n    pub reply: Option<(String, String, String)>,\n    /// (id, title, request) of a turn that just stopped to ask, for the history (inbox.rs)\n    pub ask: Option<(String, String, String)>,\n}\n")
 patch("state.rs",
       "        // Broadcast only on a visible change, so the watcher's rapid appends cannot cause a storm\n        (\n",
       "        let chime = crate::chime::sound_for(&before.0, &s.state);\n"
       "        let reply = (chime == Some(\"complete\")).then(|| (s.id.clone(), s.title.clone(), s.prompt.clone()));\n"
+      "        let ask = (chime == Some(\"message-new-instant\")).then(|| (s.id.clone(), s.title.clone(), s.attn.clone()));\n"
       "        // Broadcast only on a visible change, so the watcher's rapid appends cannot cause a storm\n        let changed = (\n")
 patch("state.rs",
       "        ) != before\n    }\n\n    pub fn dismiss",
-      "        ) != before;\n        if chime.is_some() {\n            self.chime = chime;\n        }\n        if reply.is_some() {\n            self.reply = reply;\n        }\n        changed\n    }\n\n    pub fn dismiss")
+      "        ) != before;\n        if chime.is_some() {\n            self.chime = chime;\n        }\n        if reply.is_some() {\n            self.reply = reply;\n        }\n        if ask.is_some() {\n            self.ask = ask;\n        }\n        changed\n    }\n\n    pub fn dismiss")
 patch("main.rs",
       "        let store = st.store.lock().unwrap();\n        let cfg = st.cfg.lock().unwrap();\n        store.snapshot(",
       "        let mut store = st.store.lock().unwrap();\n        let cfg = st.cfg.lock().unwrap();\n"
       "        if let Some(sound) = store.chime.take() {\n            if cfg.session_end_sound {\n                crate::chime::play(sound);\n            }\n        }\n"
-      "        if let Some((id, title, prompt)) = store.reply.take() {\n            if cfg.reply_preview {\n                crate::reply_preview::fire(app, id, title, prompt);\n            }\n        }\n"
+      "        if let Some((id, title, prompt)) = store.reply.take() {\n            crate::reply_preview::fire(app, id, title, prompt, cfg.reply_preview);\n        }\n        if let Some((id, title, ask)) = store.ask.take() {\n            crate::inbox::push(app, \"attention\", \"claude\", title, ask, id);\n        }\n"
       "        store.snapshot(")
 patch("config.rs",
       "    pub reset_notification_sound: bool,\n",
@@ -273,7 +275,7 @@ patch("main.rs",
       "#[tauri::command]\nfn get_session_end_sound(")
 patch("main.rs",
       "            set_session_end_sound,\n",
-      "            set_session_end_sound,\n            get_reply_preview,\n            set_reply_preview,\n")
+      "            set_session_end_sound,\n            get_reply_preview,\n            set_reply_preview,\n            inbox::get_inbox,\n            inbox::inbox_seen,\n            inbox::inbox_read_session,\n            inbox::inbox_clear,\n")
 patch(html,
       "          <div class=\"item\"><span>Preview the reset card</span>",
       "          <div class=\"item\"><span>Preview Claude's reply</span><button class=\"switch\" id=\"sw-reply-preview\" role=\"switch\" aria-checked=\"false\" aria-label=\"Preview Claude's reply\"></button></div>\n"
@@ -295,6 +297,68 @@ patch(html,
 patch(html,
       "    sessionSound.refresh(),\n",
       "    sessionSound.refresh(),\n    replyPreview.refresh(),\n")
+
+# Notification history (inbox.rs): replies (above), permission requests (state.rs) and renewals land
+# in it; a bell after the rings shows the unread count, and hovering it lists the history.
+patch("reset_alert.rs",
+      "pub fn enqueue(app: &AppHandle, event: ResetEvent) {\n    let state = app.state::<AppState>();\n    let config = state.cfg.lock().unwrap();\n",
+      "pub fn enqueue(app: &AppHandle, event: ResetEvent) {\n    let state = app.state::<AppState>();\n    let config = state.cfg.lock().unwrap();\n"
+      "    let lang = crate::resolved_lang(&config.lang);\n"
+      "    crate::inbox::push(app, \"reset\", &event.provider,\n"
+      "        format!(\"{} {}\", crate::provider_label(&event.provider), word_renewed(&lang)),\n"
+      "        format!(\"{} {} · {} · {}%\", traymenu::label(&event.window_label, &lang), word_renewed(&lang), word_quota_available(&lang), traymenu::pct(event.used_fraction)),\n"
+      "        String::new());\n")
+notch = "../ui/notch.html"
+patch(notch,
+      "const listen = window.__TAURI__.event.listen;\n",
+      "const listen = window.__TAURI__.event.listen;\n"
+      "// Notification history (inbox.rs), newest first; inboxLit = what was unread when its card opened\n"
+      "let inbox=[], inboxLit=null;\n")
+patch(notch,
+      "  #card.show{display:block}\n",
+      "  #card.show{display:block}\n"
+      "  /* The bell after the rings (inbox.rs): its badge counts what is unread, its card lists the history */\n"
+      "  .cell.inbox .ringwrap{display:grid;place-items:center}\n"
+      "  .cell.inbox svg.bell{width:calc(26px * var(--k));height:calc(26px * var(--k));fill:none;stroke:var(--ink-3);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}\n"
+      "  .cell.inbox .badge{position:absolute;top:-2px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#FF3F00;color:#fff;font-size:11px;font-weight:700;line-height:18px;text-align:center;display:none}\n"
+      "  .cell.inbox.unread .badge{display:block}\n"
+      "  .ib-row{display:flex;gap:8px;padding:8px 0;border-top:1px solid var(--card-rule)}\n"
+      "  .ib-row:first-of-type{border-top:none}\n"
+      "  .ib-row.go{cursor:pointer}\n"
+      "  .ib-row.go:hover .ib-title{text-decoration:underline}\n"
+      "  .ib-icon{flex:none;width:16px;height:16px;margin-top:1px;display:grid;place-items:center;color:var(--ink-2);font-size:10px;font-weight:700}\n"
+      "  .ib-icon svg{width:16px;height:16px;fill:currentColor}\n"
+      "  .ib-main{min-width:0;flex:1}\n"
+      "  .ib-top{display:flex;gap:6px;align-items:baseline}\n"
+      "  .ib-title{font-size:12px;font-weight:600;color:var(--ink-2);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n"
+      "  .ib-row.new .ib-title::before{content:'';display:inline-block;width:6px;height:6px;border-radius:3px;background:#00FF88;margin-right:6px;vertical-align:middle}\n"
+      "  .ib-time{font-size:10px;color:var(--ink-dim);flex:none}\n"
+      "  .ib-text{font-size:11px;color:var(--ink-4);line-height:1.4;white-space:pre-line;margin-top:2px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}\n"
+      "  .ib-row.attention .ib-text{color:#F2FF00}\n"
+      "  .ib-foot{display:flex;justify-content:flex-end;margin-top:6px}\n"
+      "  .ib-foot button{font:inherit;font-size:11px;color:var(--ink-3);background:transparent;border:1px solid var(--card-line);border-radius:7px;padding:3px 9px;cursor:pointer}\n"
+      "  .ib-foot button:hover{color:var(--ink)}\n")
+patch(notch,
+      "const want=ps.map(p=>p.id+':'+(glyphs[p.base]?glyphs[p.base].kind:'-')).join(',');",
+      "const want=ps.map(p=>p.id+':'+(glyphs[p.base]?glyphs[p.base].kind:'-')).join(',')+(inbox.length?',inbox':'');")
+patch(notch,
+      "      <div class=\"pct\">—</div></div>`).join('');",
+      "      <div class=\"pct\">—</div></div>`).join('')+(inbox.length?inboxCellHtml(ps.length):'');")
+patch(notch,
+      "  reportHot(); // a provider appearing or leaving resizes the pill\n}\n",
+      "  renderInboxCell();\n  reportHot(); // a provider appearing or leaving resizes the pill\n}\n")
+patch(notch,
+      "function hideCard(){card.classList.remove('show');reportHot();}",
+      "function hideCard(){card.classList.remove('show');inboxLit=null;reportHot();}")
+patch(notch,
+      "  if(press&&!dragging&&press.id) refreshRing(press.id);\n",
+      "  if(press&&!dragging&&press.id==='inbox') invoke('inbox_seen').catch(()=>{});\n"
+      "  else if(press&&!dragging&&press.id) refreshRing(press.id);\n")
+patch(notch,
+      "// CLAUDE_AUTH_ACTIONS_END\nfunction renderCard(){\n  const c=document.getElementById('card');\n",
+      "// CLAUDE_AUTH_ACTIONS_END\n" + pathlib.Path(sys.argv[2]).read_text() +
+      "function renderCard(){\n  const c=document.getElementById('card');\n"
+      "  if(hoverId==='inbox'){ renderInboxCard(c); return; }\n")
 
 # Copilot borrows the session of the GitHub CLI, but upstream only ever looks for "gh.exe".
 patch("copilot.rs",
@@ -319,7 +383,7 @@ install -m 0755 "$HERE/scripts/install-desktop.sh"  "$HERE/app/scripts/install-d
 # ---------------------------------------------------------------- 5. test + build
 cd "$HERE/app"
 say "Unit tests for the new modules (release profile, so the build below reuses it)"
-cargo test --release -p codenotch -- linux_focus linux_x11 codex_spend chime reply_preview 2>&1 | tail -20
+cargo test --release -p codenotch -- linux_focus linux_x11 codex_spend chime reply_preview inbox 2>&1 | tail -20
 
 say "Building (first build compiles SQLite and Tauri: expect 5-15 minutes)"
 cargo build --release

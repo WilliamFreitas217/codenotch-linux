@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Codenotch</title>
+<style>
+  /* reset-alert.html's card, grown to 340x190 for a few lines of the answer (reply_preview.rs) */
+  :root{
+    --card:#0a0a0a;--line:#242424;--ink:#fff;--muted:#c8c8c8;
+    --button-hover:#383838;--focus:#83baff;
+  }
+  :root[data-theme="light"]{
+    --card:#fff;--line:#e4e4e8;--ink:#1d1d1f;--muted:#3c3c43;
+    --button-hover:#e6e6e9;--focus:#0a7aff;
+  }
+  *{box-sizing:border-box}
+  html,body{width:340px;height:190px;margin:0;background:transparent;overflow:hidden}
+  body{font:13px/1.35 system-ui,sans-serif;color:var(--ink);user-select:none}
+  #card{position:absolute;width:306px;height:168px;background:var(--card);border:1px solid var(--line);
+    border-radius:16px;padding:13px 15px;overflow:hidden;cursor:pointer}
+  #tail{position:absolute;background:var(--card);width:34px;height:32px}
+  body[data-edge="right"] #card{left:0;top:11px}
+  body[data-edge="right"] #tail{left:305px;top:79px;clip-path:path('M0 0C0 8 19 12 34 16C19 20 0 24 0 32Z')}
+  body[data-edge="left"] #card{left:34px;top:11px}
+  body[data-edge="left"] #tail{left:1px;top:79px;clip-path:path('M34 0C34 8 15 12 0 16C15 20 34 24 34 32Z')}
+  body[data-edge="top"] #card{left:17px;top:22px}
+  body[data-edge="top"] #tail{left:153px;top:0;width:34px;height:23px;clip-path:path('M0 23C8 23 12 9 17 0C22 9 26 23 34 23Z')}
+  body[data-edge="bottom"] #card{left:17px;top:0}
+  body[data-edge="bottom"] #tail{left:153px;top:167px;width:34px;height:23px;clip-path:path('M0 0C8 0 12 14 17 23C22 14 26 0 34 0Z')}
+  body[data-attached="false"] #card{left:17px;top:11px}
+  body[data-attached="false"] #tail{display:none}
+  .head{display:flex;align-items:center;gap:9px;min-width:0}
+  #glyph{flex:none;width:21px;height:21px;display:grid;place-items:center;font-size:12px;font-weight:700}
+  #glyph svg{display:block;width:21px;height:21px;fill:currentColor}
+  #glyph img{display:block;width:21px;height:21px;object-fit:contain}
+  .heading{min-width:0;flex:1}
+  .title{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .subtitle{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #dismiss{flex:none;width:30px;height:30px;margin:-4px -6px 0 0;border:0;border-radius:7px;
+    background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer}
+  #dismiss:hover{background:var(--button-hover);color:var(--ink)}
+  #dismiss:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+  #dismiss svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+  #body{margin-top:10px;font-size:12.5px;line-height:1.4;color:var(--muted);white-space:pre-line;
+    overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:6;overflow:hidden}
+  @media (prefers-reduced-motion: no-preference){#card{animation:appear .18s ease-out both}@keyframes appear{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}}
+</style>
+</head>
+<body data-edge="right" data-attached="false">
+<div id="card" role="alert" aria-live="polite">
+  <div class="head">
+    <span id="glyph" aria-hidden="true"></span>
+    <div class="heading"><div id="title" class="title"></div><div id="subtitle" class="subtitle"></div></div>
+    <button id="dismiss" type="button" aria-label="Dismiss"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"/></svg></button>
+  </div>
+  <div id="body"></div>
+</div>
+<div id="tail" aria-hidden="true"></div>
+<script>
+const data = window.__RESET_ALERT__ || {
+  lang:'en', edge:'right', attached:false, glyph:{kind:'',svg:'',url:''}, token:1, session:'',
+  title:'codenotch-linux', subtitle:'you: add a reply preview', dismiss_label:'Dismiss',
+  body:'Done. The card now shows the start of the answer.\n• reply_preview.rs reads the transcript\n• click to jump to the session',
+};
+document.documentElement.lang = data.lang || 'en';
+document.body.dataset.edge = ['left','right','top','bottom'].includes(data.edge) ? data.edge : 'right';
+document.body.dataset.attached = data.attached ? 'true' : 'false';
+document.getElementById('title').textContent = data.title;
+document.getElementById('subtitle').textContent = data.subtitle;
+document.getElementById('body').textContent = data.body;
+document.getElementById('dismiss').setAttribute('aria-label', data.dismiss_label || 'Dismiss');
+const glyph = data.glyph || {};
+const glyphEl = document.getElementById('glyph');
+if(glyph.kind === 'svg' && typeof glyph.svg === 'string' && glyph.svg.startsWith('<svg')){
+  glyphEl.innerHTML = glyph.svg;
+}else if((glyph.kind === 'png' || glyph.kind === 'appicon') && /^data:image\/png;base64,/.test(glyph.url || '')){
+  const image = document.createElement('img'); image.src = glyph.url; image.alt = '';
+  glyphEl.replaceChildren(image);
+}else{
+  glyphEl.textContent = 'C';
+}
+function fit(){document.documentElement.style.zoom = String(Math.min(innerWidth/340,innerHeight/190));}
+fit(); window.addEventListener('resize',fit);
+const invoke = (cmd, args) => window.__TAURI__?.core?.invoke(cmd, args).catch(() => {});
+const dismiss = () => invoke('dismiss_reset_alert',{token:data.token});
+document.getElementById('dismiss').addEventListener('click', e => { e.stopPropagation(); dismiss(); });
+document.getElementById('card').addEventListener('click', () => {
+  if(data.session) invoke('focus_session',{id:data.session});
+  dismiss();
+});
+document.addEventListener('keydown', e => { if(e.key === 'Escape') dismiss(); });
+</script>
+</body>
+</html>

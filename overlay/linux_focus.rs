@@ -1,5 +1,5 @@
-//! Linux: jump back to the terminal that hosts a Claude session, and tell which kind of
-//! desktop session the notch is running in.
+//! Linux: jump back to the terminal that hosts a Claude session (or to the Claude desktop app), and
+//! tell which kind of desktop session the notch is running in.
 //!
 //! The Windows build walks the parent chain from the session's `claude` pid up to the terminal's
 //! window. The same idea works here, with two differences:
@@ -280,17 +280,7 @@ pub fn focus_terminal(claude_pid: u32) -> bool {
     }
     let chain = ancestor_chain_with(claude_pid, parent_of);
     let env = Env::from_process();
-    let (session, compositor) = detect(&env);
-
-    let ok = match (session, compositor) {
-        (SessionKind::Wayland, Compositor::Sway) => focus_sway(&chain) || focus_x11(&chain),
-        (SessionKind::Wayland, Compositor::Hyprland) => focus_hyprland(&chain) || focus_x11(&chain),
-        // GNOME and KDE on Wayland expose no way to raise a native client's window. A terminal
-        // running through XWayland is still visible to X11 tools, so try that and no more.
-        (SessionKind::Wayland, _) => focus_x11(&chain),
-        (SessionKind::X11, _) => focus_x11(&chain),
-        (SessionKind::Unknown, _) => false,
-    };
+    let ok = focus_chain(&chain, &env);
     if !ok {
         log(&format!(
             "focus_terminal: no window found for pid {claude_pid} (chain {chain:?}); {}",
@@ -298,6 +288,51 @@ pub fn focus_terminal(claude_pid: u32) -> bool {
         ));
     }
     ok
+}
+
+/// The Claude desktop app's main (browser) process: its own binary, run without Electron's
+/// `--type=` that every helper (zygote, gpu, renderer, network service) carries. `cmdline` is
+/// `/proc/<pid>/cmdline`, NUL-separated. That process owns the window.
+pub fn is_desktop_main(cmdline: &str) -> bool {
+    let mut args = cmdline.split('\0').filter(|a| !a.is_empty());
+    let Some(exe) = args.next() else { return false };
+    exe.rsplit('/').next() == Some("claude-desktop") && !args.any(|a| a.starts_with("--type="))
+}
+
+fn desktop_main_pid() -> Option<u32> {
+    std::fs::read_dir("/proc").ok()?.flatten().find_map(|e| {
+        let pid: u32 = e.file_name().to_str()?.parse().ok()?;
+        let cmdline = std::fs::read_to_string(e.path().join("cmdline")).ok()?;
+        is_desktop_main(&cmdline).then_some(pid)
+    })
+}
+
+/// Raise the Claude desktop app, the jump-back target of a session that has no terminal.
+pub fn focus_claude_desktop() -> bool {
+    let Some(pid) = desktop_main_pid() else {
+        log("focus_claude_desktop: the Claude desktop app is not running");
+        return false;
+    };
+    let env = Env::from_process();
+    let ok = focus_chain(&[pid], &env);
+    if !ok {
+        log(&format!("focus_claude_desktop: no window found for pid {pid}; {}", describe(&env)));
+    }
+    ok
+}
+
+/// Raise the window owned by the farthest pid of `chain` the display server will let us reach.
+fn focus_chain(chain: &[u32], env: &Env) -> bool {
+    let (session, compositor) = detect(env);
+    match (session, compositor) {
+        (SessionKind::Wayland, Compositor::Sway) => focus_sway(chain) || focus_x11(chain),
+        (SessionKind::Wayland, Compositor::Hyprland) => focus_hyprland(chain) || focus_x11(chain),
+        // GNOME and KDE on Wayland expose no way to raise a native client's window. A terminal
+        // running through XWayland is still visible to X11 tools, so try that and no more.
+        (SessionKind::Wayland, _) => focus_x11(chain),
+        (SessionKind::X11, _) => focus_x11(chain),
+        (SessionKind::Unknown, _) => false,
+    }
 }
 
 #[cfg(test)]
@@ -382,6 +417,18 @@ mod tests {
         assert_eq!(pick_best(&windows, &chain), Some("0x2".into()));
         assert_eq!(pick_best(&windows, &[1000]), None);
         assert_eq!(pick_best(&[("0x9".into(), 0)], &[0, 5]), None, "pid 0 is never a match");
+    }
+
+    #[test]
+    fn only_the_desktop_apps_main_process_is_picked() {
+        assert!(is_desktop_main("/usr/lib/claude-desktop/claude-desktop\0"));
+        assert!(!is_desktop_main("/usr/lib/claude-desktop/claude-desktop\0--type=zygote\0"));
+        assert!(!is_desktop_main(
+            "/usr/lib/claude-desktop/claude-desktop\0--type=utility\0--utility-sub-type=network.mojom.NetworkService\0"
+        ));
+        assert!(!is_desktop_main("/usr/lib/claude-desktop/chrome-native-host\0chrome-extension://x/\0"));
+        assert!(!is_desktop_main("/home/u/.local/bin/claude\0"));
+        assert!(!is_desktop_main(""));
     }
 
     #[test]

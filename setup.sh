@@ -119,6 +119,9 @@ patch("codex.rs",
 patch("focus.rs",
       "#[cfg(not(windows))]\npub fn focus_terminal(_claude_pid: u32) -> bool {\n    false\n}\n",
       "#[cfg(not(windows))]\npub fn focus_terminal(claude_pid: u32) -> bool {\n    crate::linux_focus::focus_terminal(claude_pid)\n}\n")
+patch("focus.rs",
+      "#[cfg(not(windows))]\npub fn focus_claude_desktop() -> bool {\n    false\n}\n",
+      "#[cfg(not(windows))]\npub fn focus_claude_desktop() -> bool {\n    crate::linux_focus::focus_claude_desktop()\n}\n")
 
 # The hook binary is looked up (and the app launched by the hook) with a hard-coded ".exe".
 patch("hooks_install.rs",

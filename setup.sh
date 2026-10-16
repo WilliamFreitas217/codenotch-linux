@@ -441,3 +441,13 @@ cargo build --release
 say "Done"
 echo "Binary:   $HERE/app/target/release/codenotch"
 echo "Next:     $HERE/app/scripts/doctor-linux.sh   then   $HERE/app/scripts/run-linux.sh"
+
+# Under Wayland the notch runs through XWayland and does not get the pointer: it never opens. Say so loudly.
+if [ "${XDG_SESSION_TYPE:-}" = "wayland" ]; then
+  echo; printf '\033[1;41;97m%s\033[0m\n' \
+    "                                                                          " \
+    "  WAYLAND SESSION: THE NOTCH WILL NOT OPEN ON HOVER.                      " \
+    "  Log out, click the gear on the login screen, pick 'Ubuntu on Xorg',    " \
+    "  log in again and run run-linux.sh.                                      " \
+    "                                                                          "
+fi

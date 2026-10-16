@@ -12,8 +12,7 @@ echo "  XDG_SESSION_TYPE=${XDG_SESSION_TYPE:-<unset>}  DISPLAY=${DISPLAY:-<unset
 echo "  XDG_CURRENT_DESKTOP=${XDG_CURRENT_DESKTOP:-<unset>}"
 case "${XDG_SESSION_TYPE:-}" in
   x11)     ok "X11 session: positioning, always-on-top and terminal jump-back all work natively" ;;
-  wayland) [ -n "${DISPLAY:-}" ] && ok "Wayland with XWayland: the notch runs as an X11 client" \
-                                  || miss "Wayland without XWayland: the notch cannot be placed" ;;
+  wayland) printf '  \033[1;41;97m[MISS] Wayland session: the notch will not open on hover. Log in with "Ubuntu on Xorg".\033[0m\n' ;;
   *)       warn "could not tell the session type" ;;
 esac
 

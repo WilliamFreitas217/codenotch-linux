@@ -113,6 +113,7 @@ cd app && cargo test --release                                           # suít
 |---|---|
 | Janela vazia ou preta | `CODENOTCH_WEBKIT_SAFE=1 ./app/scripts/run-linux.sh` (desliga o renderer DMA-BUF do WebKitGTK; comum com NVIDIA). |
 | Crash ao abrir: `[xcb] Unknown sequence number ... XInitThreads has not been called` | Acesso ao X11 de várias threads sem o Xlib ter suporte a threads. O `setup.sh` agora liga o `XInitThreads()` no início do app (`overlay/linux_x11.rs`): atualize o repo e rode `bash setup.sh --no-deps`. Se persistir, abra uma issue com a saída de `./app/scripts/doctor-linux.sh`, a GPU (`lspci \| grep -iE 'vga\|3d'`) e a versão do WebKitGTK (`dpkg -l \| grep libwebkit2gtk-4.1-0`). |
+| Notch aparece mas não abre ao passar o mouse | Sessão Wayland (padrão do Ubuntu novo). Saia, clique na engrenagem da tela de login, escolha "Ubuntu on Xorg" e entre de novo. O `setup.sh` e o `doctor-linux.sh` avisam em vermelho. |
 | Fundo do notch não transparente | Precisa de compositor. No Ubuntu/GNOME já existe; em WMs leves, rode `picom`. |
 | Sem ícone na bandeja (GNOME) | `sudo apt install gnome-shell-extension-appindicator`, saia e entre na sessão. |
 | Anel do Claude em "Waiting for first reading..." | Normal nos primeiros instantes. Se persistir, veja `~/.config/codenotch/run.log`. |
